@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Início - Campeonato</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: url('img/fundo.jpg') no-repeat center center fixed;
+      background-size: cover;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+
+    .titulo {
+      margin-bottom: 40px;
+    }
+
+    .titulo img {
+      max-width: 90%;
+      height: auto;
+    }
+
+    .caixa-botoes {
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid white;
+      border-radius: 16px;
+      padding: 60px;
+      backdrop-filter: blur(5px);
+      box-shadow: 7px 7px 7px rgba(0, 0, 0, 0.2);
+      display: flex;
+      gap: 60px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .caixa-botoes a {
+      text-decoration: none;
+    }
+
+    .botao {
+      background-color: rgba(255, 255, 255, 0.3);
+      border: 1px solid white;
+	  color: #14532d; /* Verde escuro */
+      padding: 18px 40px;
+      font-size: 22px;
+      font-weight: bold;
+      border-radius: 5px;
+      transition: 0.3s;
+      cursor: pointer;
+      box-shadow: 5px 5px 5px rgba(0,0,0,0.3);
+    }
+
+    .botao:hover {
+      background-color: #14532d;
+      border: none;
+	  color: white;
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+  <div class="titulo">
+    <img src="img/titulo.png" alt="Título do Campeonato">
+  </div>
+
+  <div class="caixa-botoes">
+    <a href="operador.html" target="_blank"><div class="botao">Operador</div></a>
+    <a href="publico.html" target="_blank"><div class="botao">Público</div></a>
+  </div>
+</body>
+</html>
