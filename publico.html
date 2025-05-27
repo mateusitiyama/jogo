@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Público - Campeonato</title>
+  <link rel="stylesheet" href="estilo.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&family=Roboto+Condensed:wght@700&display=swap" rel="stylesheet">
+  
+<style></style>
+</head>
+<body>
+  <div class="container">
+    <div id="cabecalho">
+		<img src="img/titulo.png" alt="Semana do Meio Ambiente">
+			<p class="fase" id="fase">Oitavas de Final</p>
+		</div>
+    
+    <div id="estado_geral">
+      <div id="info">Partida <span id="partida_num">1</span>: <span id="equipe1">Equipe 1</span> vs <span id="equipe2">Equipe 2</span></div>
+      <div id="placar">0 x 0</div>
+      <div id="pergunta">Aguardando pergunta...</div>
+      
+      <div class="opcoes-container">
+        <div class="opcao" id="A"></div>
+        <div class="opcao" id="B"></div>
+        <div class="opcao" id="C"></div>
+      </div>
+    </div>
+    
+    <div id="espera" style="display: none;">
+      <h2>Próxima Partida</h2>
+      <p id="texto_aguarde">Aguardando início da próxima partida...</p>
+    </div>
+    
+    <div id="fim_partida" style="display: none;">
+		<div class="vencedor-container">
+			<h2><span>🏆</span> <span id="vencedor_nome"></span> <span>🏆</span></h2>
+			<p class="placar-final">Placar final: <span id="placar_final"></span></p>
+		</div>
+  
+		<div id="bracket">
+			<div class="bracket-container">
+				<div class="bracket-column">
+					<h3>Oitavas de Final</h3>
+					<div id="oitavas"></div>
+				</div>
+				<div class="bracket-column">
+					<h3>Quartas de Final</h3>
+					<div id="quartas"></div>
+				</div>
+				<div class="bracket-column">
+					<h3>Semifinal</h3>
+					<div id="semifinal"></div>
+				</div>
+				<div class="bracket-column">
+					<h3>Final</h3>
+					<div id="final"></div>
+				</div>
+			</div>
+		</div>
+	</div>
+      
+    <div id="bracket">
+      <div class="bracket-container">
+        <div class="bracket-column">
+          <h3>Oitavas de Final</h3>
+          <div id="oitavas"></div>
+        </div>
+        <div class="bracket-column">
+          <h3>Quartas de Final</h3>
+          <div id="quartas"></div>
+        </div>
+        <div class="bracket-column">
+          <h3>Semifinal</h3>
+          <div id="semifinal"></div>
+        </div>
+        <div class="bracket-column">
+          <h3>Final</h3>
+          <div id="final"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+	
+  <script>
+    // O script JavaScript permanece exatamente o mesmo, pois estamos apenas melhorando o design
+    const perguntaEl = document.getElementById("pergunta");
+    const opcoes = {
+      A: document.getElementById("A"),
+      B: document.getElementById("B"),
+      C: document.getElementById("C")
+    };
+    const placarEl = document.getElementById("placar");
+    const partidaEl = document.getElementById("partida_num");
+    const equipe1El = document.getElementById("equipe1");
+    const equipe2El = document.getElementById("equipe2");
+
+    const resultados = {}; // Armazena resultados de partidas
+
+    function limparMarcacoes() {
+      for (let k in opcoes) opcoes[k].className = "opcao";
+    }
+
+    function obterFase(partida) {
+      if (partida >= 1 && partida <= 8) return "Oitavas de Final";
+      if (partida >= 9 && partida <= 12) return "Quartas de Final";
+      if (partida >= 13 && partida <= 14) return "Semifinal";
+      if (partida === 15) return "Final";
+      return "";
+    }
+
+    function formatarResultado(num, eq1, eq2) {
+      if (!resultados[num]) return `${eq1} vs ${eq2}`;
+      return `${eq1} ${resultados[num].placar1} x ${resultados[num].placar2} ${eq2}`;
+    }
+
+    function atualizarChaveamento(equipes) {
+      const oitavas = document.getElementById("oitavas");
+      const quartas = document.getElementById("quartas");
+      const semifinal = document.getElementById("semifinal");
+      const final = document.getElementById("final");
+
+      oitavas.innerHTML = "";
+      quartas.innerHTML = "";
+      semifinal.innerHTML = "";
+      final.innerHTML = "";
+
+      for (let i = 0; i < 16; i += 2) {
+        if (equipes[i] && equipes[i+1]) {
+          const matchEl = document.createElement("div");
+          matchEl.className = "bracket-match" + (i/2 + 1 === parseInt(partidaEl.innerText) ? " current" : "");
+          matchEl.innerHTML = formatarResultado(i/2 + 1, equipes[i], equipes[i+1]);
+          oitavas.appendChild(matchEl);
+        }
+      }
+      for (let i = 16; i < 24; i += 2) {
+        if (equipes[i] && equipes[i+1]) {
+          const matchEl = document.createElement("div");
+          matchEl.className = "bracket-match" + (i/2 + 1 === parseInt(partidaEl.innerText) ? " current" : "");
+          matchEl.innerHTML = formatarResultado(i/2 + 1, equipes[i], equipes[i+1]);
+          quartas.appendChild(matchEl);
+        }
+      }
+      for (let i = 24; i < 28; i += 2) {
+        if (equipes[i] && equipes[i+1]) {
+          const matchEl = document.createElement("div");
+          matchEl.className = "bracket-match" + (i/2 + 1 === parseInt(partidaEl.innerText) ? " current" : "");
+          matchEl.innerHTML = formatarResultado(i/2 + 1, equipes[i], equipes[i+1]);
+          semifinal.appendChild(matchEl);
+        }
+      }
+      if (equipes[28] && equipes[29]) {
+        const matchEl = document.createElement("div");
+        matchEl.className = "bracket-match" + (15 === parseInt(partidaEl.innerText) ? " current" : "");
+        matchEl.innerHTML = formatarResultado(15, equipes[28], equipes[29]);
+        final.appendChild(matchEl);
+      }
+    }
+
+    function atualizarTela(data) {
+      document.getElementById("estado_geral").style.display = "none";
+      document.getElementById("espera").style.display = "none";
+      document.getElementById("fim_partida").style.display = "none";
+
+      if (data.tipo === "nova") {
+        document.getElementById("estado_geral").style.display = "block";
+        perguntaEl.innerText = `Pergunta ${data.rodadaIndex + 1}: ${data.pergunta}`;
+        opcoes.A.innerText = data.A;
+        opcoes.B.innerText = data.B;
+        opcoes.C.innerText = data.C;
+        limparMarcacoes();
+        partidaEl.innerText = data.partida;
+        equipe1El.innerText = data.equipe1;
+        equipe2El.innerText = data.equipe2;
+        placarEl.innerText = `${data.placar1} x ${data.placar2}`;
+        document.getElementById("fase").innerText = obterFase(data.partida);
+      } else if (data.tipo === "escolha") {
+        document.getElementById("estado_geral").style.display = "block";
+        limparMarcacoes();
+        if (data.opcao) opcoes[data.opcao].classList.add("selecionada");
+      } else if (data.tipo === "confirmar") {
+        document.getElementById("estado_geral").style.display = "block";
+        const correta = data.correta;
+        const opcao = data.opcao;
+        if (correta === opcao) {
+          opcoes[opcao].classList.remove("selecionada");
+          opcoes[opcao].classList.add("correta");
+          document.getElementById("sound-correct").play();
+        } else {
+          opcoes[opcao].classList.remove("selecionada");
+          opcoes[opcao].classList.add("errada");
+          document.getElementById("sound-incorrect").play();
+        }
+      } else if (data.tipo === "placar") {
+        document.getElementById("estado_geral").style.display = "block";
+        placarEl.innerText = `${data.placar1} x ${data.placar2}`;
+      } else if (data.tipo === "fim_partida") {
+        document.getElementById("fim_partida").style.display = "block";
+        document.getElementById("vencedor_nome").innerText = data.vencedor;
+        document.getElementById("placar_final").innerText = `${data.placar1} x ${data.placar2}`;
+        if (data.partida) {
+          resultados[data.partida] = {
+            equipe1: data.equipe1,
+            equipe2: data.equipe2,
+            placar1: data.placar1,
+            placar2: data.placar2
+          };
+          atualizarChaveamento(data.equipes);
+        }
+      } else if (data.tipo === "iniciar") {
+        document.getElementById("estado_geral").style.display = "block";
+      } else if (data.tipo === "proxima") {
+        document.getElementById("espera").style.display = "block";
+        document.getElementById("estado_geral").style.display = "none";
+        document.getElementById("fim_partida").style.display = "none";
+        if (data.equipe1 && data.equipe2) {
+          document.getElementById("espera").innerHTML = `
+            <h2>Próxima Partida</h2>
+            <p>Partida ${data.partida}: <strong>${data.equipe1}</strong> vs <strong>${data.equipe2}</strong></p>
+            <p id="texto_aguarde">Aguardando início da próxima partida...</p>
+          `;
+        } else {
+          document.getElementById("espera").innerText = "Aguardando início da próxima partida...";
+        }
+      }
+
+      if (data.equipes && Array.isArray(data.equipes)) {
+        atualizarChaveamento(data.equipes);
+      }
+    }
+
+    window.addEventListener("storage", e => {
+      if (e.key === "jogo_publico") {
+        const data = JSON.parse(e.newValue);
+        atualizarTela(data);
+      }
+    });
+  </script>
+</body>
+</html>

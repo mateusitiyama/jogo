@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Operador - Campeonato</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+    h1 { margin-bottom: 10px; }
+    .highlight { font-weight: bold; color: #007BFF; }
+    button { margin: 5px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    .equipe-box { display: inline-block; margin: 10px; padding: 10px; background: #e0e0e0; border-radius: 8px; }
+    .equipe-box h3 { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <h1>Painel do Operador</h1>
+
+  <input type="file" accept=".csv" id="csvPerguntas" /> Carregar Perguntas<br><br>
+  <input type="file" accept=".csv" id="csvEquipes" /> Carregar Equipes<br><br>
+  <button onclick="salvarJogo()">💾 Salvar Jogo</button>
+  <input type="file" id="arquivoJogo" onchange="carregarJogo()" /><br><br>
+
+  <button onclick="iniciarPartidaPublica()" id="btnIniciarPartida">▶️ Iniciar Partida</button>
+  <button onclick="proximaPartida()" id="btnProximaPartida" style="display:none;">➡️ Próxima Partida</button>
+
+  <div style="margin-top: 20px;">
+    Partida <span class="highlight" id="partida_numero">-</span>:
+    <span class="highlight" id="equipe1_nome">Equipe 1</span> vs
+    <span class="highlight" id="equipe2_nome">Equipe 2</span>
+  </div>
+  <p>Pergunta: <span id="pergunta_atual">Aguardando...</span></p>
+
+  <div class="equipe-box">
+    <h3 id="label_e1">Equipe 1</h3>
+    <button onclick="responder('A', 1)" id="btnA1">A</button>
+    <button onclick="responder('B', 1)" id="btnB1">B</button>
+    <button onclick="responder('C', 1)" id="btnC1">C</button>
+  </div>
+
+  <div class="equipe-box">
+    <h3 id="label_e2">Equipe 2</h3>
+    <button onclick="responder('A', 2)" id="btnA2">A</button>
+    <button onclick="responder('B', 2)" id="btnB2">B</button>
+    <button onclick="responder('C', 2)" id="btnC2">C</button>
+  </div>
+
+  <br>
+  <button onclick="confirmarResposta()" id="btnConfirmar">✅ Confirmar Resposta</button>
+  <button onclick="desfazerUltimaConfirmacao()" id="btnDesfazer" disabled>↩️ Desfazer Confirmação</button>
+  <button onclick="proximaPergunta()" id="btnProxima" disabled>➡️ Próxima Pergunta</button>
+  <div id="console" style="margin-top: 30px; padding: 10px; background: #fff; border: 1px solid #ccc; font-family: monospace; height: 150px; overflow-y: auto;">
+	<div><strong>Console de Ações:</strong></div>
+  </div>
+
+ 
+<script>
+  let perguntas = { facil: [], medio: [], dificil: [], desempate: [] };
+  let usadas = [];
+  let equipes = [];
+  let partidaAtual = 0;
+  let perguntaIndex = 0;
+  let rodada = [];
+  let placar = {1: 0, 2: 0};
+  let empate = false;
+  let ultimaEscolha = null;
+  let ultimaEquipe = null;
+  let ultimoAcertou = false;
+  let tentativas = 0;
+  let historicoPartidas = [];
+
+  const botoesResposta = ["btnA1","btnB1","btnC1","btnA2","btnB2","btnC2"];
+
+  document.getElementById("csvPerguntas").addEventListener("change", e => {
+    Papa.parse(e.target.files[0], {
+      header: true,
+      complete: res => {
+        perguntas.facil = res.data.filter(p => p.nivel.toLowerCase() === "fácil");
+        perguntas.medio = res.data.filter(p => p.nivel.toLowerCase() === "médio");
+        perguntas.dificil = res.data.filter(p => p.nivel.toLowerCase() === "difícil");
+        perguntas.desempate = [];
+        alert("Perguntas carregadas.");
+      }
+    });
+  });
+
+  document.getElementById("csvEquipes").addEventListener("change", e => {
+    Papa.parse(e.target.files[0], {
+      header: true,
+      complete: res => {
+        
+          equipes = res.data.map(r => r.nome).filter(Boolean);
+          let eq1 = equipes[0];
+          let eq2 = equipes[1];
+          localStorage.setItem("jogo_publico", JSON.stringify({
+            tipo: "proxima",
+            equipe1: eq1,
+            equipe2: eq2,
+            partida: 1
+          }));
+          document.getElementById("btnIniciarPartida").style.display = "inline-block";
+
+      }
+    });
+  });
+
+  function iniciarPartidaPublica() {
+    document.getElementById("btnIniciarPartida").style.display = "none";
+    
+    let eq1 = equipes[partidaAtual * 2];
+    let eq2 = equipes[partidaAtual * 2 + 1];
+    localStorage.setItem("jogo_publico", JSON.stringify({
+      tipo: "proxima",
+      equipe1: eq1,
+      equipe2: eq2,
+      partida: partidaAtual + 1,
+	  equipes: equipes
+    }));
+    
+    iniciarPartida();
+  }
+
+  function iniciarPartida() {
+  if (partidaAtual >= 15 || equipes.length < 2) return;
+  placar = {1: 0, 2: 0};
+  perguntaIndex = 0;
+  rodada = [
+    sortear(perguntas.facil),
+    sortear(perguntas.medio),
+    sortear(perguntas.dificil)
+  ];
+  // Adiciona até 2 perguntas extras de dificuldade aleatória
+  for (let i = 0; i < 2; i++) {
+    const todas = [...perguntas.facil, ...perguntas.medio, ...perguntas.dificil].filter(p => !usadas.includes(p.pergunta));
+    if (todas.length > 0) {
+      const p = todas[Math.floor(Math.random() * todas.length)];
+      usadas.push(p.pergunta);
+      rodada.push(p);
+    }
+  }
+  empate = false;
+  tentativas = 0;
+  atualizarTela();
+  }
+
+  function salvarJogo() {
+    const estado = { partidaAtual, perguntaIndex, rodada, placar, empate, equipes, usadas, historicoPartidas };
+    const blob = new Blob([JSON.stringify(estado)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "estado_jogo.json";
+    link.click();
+  }
+
+  function carregarJogo() {
+    const file = document.getElementById("arquivoJogo").files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const data = JSON.parse(e.target.result);
+      partidaAtual = data.partidaAtual;
+      perguntaIndex = data.perguntaIndex;
+      rodada = data.rodada;
+      placar = data.placar;
+      empate = data.empate;
+      equipes = data.equipes;
+      usadas = data.usadas;
+	  historicoPartidas = data.historicoPartidas || [];
+      atualizarTela();
+    };
+    reader.readAsText(file);
+  }
+
+  function sortear(lista) {
+    let disponiveis = lista.filter(p => !usadas.includes(p.pergunta));
+    let sorteada = disponiveis[Math.floor(Math.random() * disponiveis.length)];
+    usadas.push(sorteada.pergunta);
+    return sorteada;
+  }
+
+  function atualizarTela() {
+    let eq1 = equipes[partidaAtual * 2];
+    let eq2 = equipes[partidaAtual * 2 + 1];
+    document.getElementById("partida_numero").innerText = partidaAtual + 1;
+    document.getElementById("equipe1_nome").innerText = eq1;
+    document.getElementById("equipe2_nome").innerText = eq2;
+    document.getElementById("label_e1").innerText = eq1;
+    document.getElementById("label_e2").innerText = eq2;
+    let pergunta = rodada[perguntaIndex];
+    document.getElementById("pergunta_atual").innerText = pergunta.pergunta +
+      " (A: " + pergunta.A + ", B: " + pergunta.B + ", C: " + pergunta.C + ")";
+	logConsole(`Pergunta ${perguntaIndex + 1} enviada (nível: ${pergunta.nivel})`);  
+    ativarBotoes();
+    document.getElementById("btnProxima").disabled = true;
+
+    localStorage.setItem("jogo_publico", JSON.stringify({
+      tipo: "nova",
+      pergunta: pergunta.pergunta,
+      rodadaIndex: perguntaIndex,
+	  A: pergunta.A,
+      B: pergunta.B,
+      C: pergunta.C,
+      partida: partidaAtual + 1,
+      equipe1: eq1,
+      equipe2: eq2,
+      placar1: placar[1],
+      placar2: placar[2],
+	  equipes: equipes
+    }));
+  }
+
+  function responder(opcao, equipe) {
+    ultimaEscolha = opcao;
+    ultimaEquipe = equipe;
+    document.getElementById("som-selecao").play().catch(() => {});
+	localStorage.setItem("jogo_publico", JSON.stringify({ tipo: "escolha", opcao, equipe }));
+	logConsole(`Equipe ${equipe} escolheu: ${opcao}`);
+	document.getElementById("btnConfirmar").disabled = false;
+  }
+
+  function confirmarResposta() {
+    if (!ultimaEscolha || !ultimaEquipe) return;
+    const p = rodada[perguntaIndex];
+    const correta = p.correta.trim().toUpperCase();
+
+    localStorage.setItem("jogo_publico", JSON.stringify({
+      tipo: "confirmar",
+      opcao: ultimaEscolha,
+      correta,
+      equipe: ultimaEquipe
+    }));
+
+    ultimoAcertou = false;
+    if (ultimaEscolha === correta) {
+      placar[ultimaEquipe]++;
+      ultimoAcertou = true;
+	  document.getElementById("som-acerto").play().catch(() => {});
+	  localStorage.setItem("jogo_publico", JSON.stringify({
+        tipo: "placar",
+        placar1: placar[1],
+        placar2: placar[2],
+		equipes: equipes
+      }));
+	  logConsole(`Resposta confirmada: ${ultimaEscolha} - CORRETA`);
+      logConsole(`Placar atualizado: ${placar[1]} x ${placar[2]}`);
+	  desativarBotoes();
+      document.getElementById("btnProxima").disabled = false;
+	  document.getElementById("btnDesfazer").disabled = false;
+    } else {
+      tentativas++;
+	  document.getElementById("som-erro").play().catch(() => {});
+	  logConsole(`Resposta confirmada: ${ultimaEscolha} - ERRADA`);
+	  if (tentativas === 1) {
+        const bloqueio = ultimaEquipe === 1 ? ["btnA1","btnB1","btnC1"] : ["btnA2","btnB2","btnC2"];
+        const liberacao = ultimaEquipe === 1 ? ["btnA2","btnB2","btnC2"] : ["btnA1","btnB1","btnC1"];
+        bloqueio.forEach(id => document.getElementById(id).disabled = true);
+        liberacao.forEach(id => document.getElementById(id).disabled = false);
+      } else if (tentativas === 2) {
+        desativarBotoes();
+        document.getElementById("btnProxima").disabled = false;
+		document.getElementById("btnDesfazer").disabled = false;
+      }
+    }
+	document.getElementById("btnConfirmar").disabled = true;
+  }
+
+  function desfazerUltimaConfirmacao() {
+    if (!ultimaEquipe || !ultimaEscolha) return;
+    if (ultimoAcertou) placar[ultimaEquipe]--;
+	logConsole(`Desfeita a confirmação da equipe ${ultimaEquipe} (resposta: ${ultimaEscolha})`);
+    ultimaEscolha = null;
+    ultimaEquipe = null;
+    ultimoAcertou = false;
+    tentativas = 0;
+    atualizarTela();
+	document.getElementById("btnDesfazer").disabled = true;
+  }
+
+  function proximaPergunta() {
+  perguntaIndex++;
+  tentativas = 0;
+  document.getElementById("btnProxima").disabled = true;
+
+  const fimPorTresZero = (placar[1] === 3 && placar[2] === 0) || (placar[2] === 3 && placar[1] === 0);
+
+  const terminouRodada = placar[1] === 3 || placar[2] === 3 || perguntaIndex >= rodada.length || fimPorTresZero;
+
+  if (terminouRodada) {
+    if (placar[1] === placar[2]) {
+      // Adiciona nova pergunta de desempate
+      const nova = sortear(perguntas.facil);
+      rodada.push(nova);
+      empate = true;
+      perguntaIndex = rodada.length - 1; // garante que nova pergunta será exibida
+      atualizarTela();
+      return;
+    } else {
+      // Finaliza a partida
+      const vencedor = placar[1] > placar[2] ? equipes[partidaAtual * 2] : equipes[partidaAtual * 2 + 1];
+      const eq1 = equipes[partidaAtual * 2];
+      const eq2 = equipes[partidaAtual * 2 + 1];
+      historicoPartidas.push({
+        partida: partidaAtual + 1,
+        equipe1: eq1,
+        equipe2: eq2,
+        placar1: placar[1],
+        placar2: placar[2],
+        vencedor: vencedor,
+        perguntas: rodada
+      });
+
+      localStorage.setItem("jogo_publico", JSON.stringify({
+        tipo: "fim_partida",
+        vencedor,
+        placar1: placar[1],
+        placar2: placar[2],
+        equipe1: eq1,
+        equipe2: eq2,
+        equipes: equipes,
+        partida: partidaAtual + 1
+      }));
+
+      document.getElementById("btnProximaPartida").style.display = "inline-block";
+
+      const idxProx = Math.floor(partidaAtual / 2) + 8;
+      const pos = partidaAtual % 2;
+      if (!equipes[idxProx * 2 + pos]) equipes[idxProx * 2 + pos] = vencedor;
+
+      partidaAtual++;
+      return;
+    }
+  }
+
+  atualizarTela();
+}
+  
+function proximaPartida() {
+  document.getElementById("btnProximaPartida").style.display = "none";
+  document.getElementById("btnIniciarPartida").style.display = "inline-block";
+  let eq1 = equipes[partidaAtual * 2];
+  let eq2 = equipes[partidaAtual * 2 + 1];
+  localStorage.setItem("jogo_publico", JSON.stringify({
+    tipo: "proxima",
+    equipe1: eq1,
+    equipe2: eq2,
+    partida: partidaAtual + 1
+  }));
+}
+
+
+  function desativarBotoes() {
+    botoesResposta.forEach(id => document.getElementById(id).disabled = true);
+    document.getElementById("btnConfirmar").disabled = true;
+	document.getElementById("btnDesfazer").disabled = true;
+  }
+
+  function ativarBotoes() {
+    botoesResposta.forEach(id => document.getElementById(id).disabled = false);
+    document.getElementById("btnConfirmar").disabled = false;
+    document.getElementById("btnProxima").disabled = true;
+  }
+  
+  function logConsole(mensagem) {
+  const c = document.getElementById("console");
+  const linha = document.createElement("div");
+  linha.textContent = `[✔] ${mensagem}`;
+  c.appendChild(linha);
+  c.scrollTop = c.scrollHeight;
+}
+</script>
+<!-- Sons -->
+	<audio id="som-selecao" preload="auto" src="sons/selecao.wav"></audio>
+	<audio id="som-acerto" preload="auto" src="sons/acerto.wav"></audio>
+	<audio id="som-erro" preload="auto" src="sons/erro.wav"></audio>
+
+</body>
+</html>
