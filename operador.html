@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Operador - Campeonato</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+    h1 { margin-bottom: 10px; }
+    .highlight { font-weight: bold; color: #007BFF; }
+    button { margin: 5px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    .equipe-box { display: inline-block; margin: 10px; padding: 10px; background: #e0e0e0; border-radius: 8px; }
+    .equipe-box h3 { margin-top: 0; }
+    .btn-resposta { min-width: 50px; }
+    .btn-selecionado { background-color: #007BFF; color: white; }
+    .btn-correto { background-color: #28a745; color: white; }
+    .btn-errado { background-color: #dc3545; color: white; }
+    .btn-desativado { opacity: 0.5; cursor: not-allowed; }
+    #console { margin-top: 30px; padding: 10px; background: #fff; border: 1px solid #ccc; font-family: monospace; height: 150px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <h1>Painel do Operador</h1>
+
+  <input type="file" accept=".csv" id="csvPerguntas" /> Carregar Perguntas<br><br>
+  <input type="file" accept=".csv" id="csvEquipes" /> Carregar Equipes<br><br>
+  <button onclick="salvarJogo()">💾 Salvar Jogo</button>
+  <input type="file" id="arquivoJogo" onchange="carregarJogo()" /><br><br>
+
+  <button onclick="iniciarPartidaPublica()" id="btnIniciarPartida">▶️ Iniciar Partida</button>
+  <button onclick="proximaPartida()" id="btnProximaPartida" style="display:none;">➡️ Próxima Partida</button>
+  <button onclick="finalizarCampeonato()" id="btnFinalizar" style="display:none;">🏆 Finalizar Campeonato</button>
+
+  <div style="margin-top: 20px;">
+    Partida <span class="highlight" id="partida_numero">-</span>:
+    <span class="highlight" id="equipe1_nome">Equipe 1</span> vs
+    <span class="highlight" id="equipe2_nome">Equipe 2</span>
+  </div>
+  <p>Pergunta: <span id="pergunta_atual">Aguardando...</span></p>
+
+  <div class="equipe-box">
+    <h3 id="label_e1">Equipe 1</h3>
+    <button onclick="responder('A', 1)" id="btnA1" class="btn-resposta">A</button>
+    <button onclick="responder('B', 1)" id="btnB1" class="btn-resposta">B</button>
+    <button onclick="responder('C', 1)" id="btnC1" class="btn-resposta">C</button>
+  </div>
+
+  <div class="equipe-box">
+    <h3 id="label_e2">Equipe 2</h3>
+    <button onclick="responder('A', 2)" id="btnA2" class="btn-resposta">A</button>
+    <button onclick="responder('B', 2)" id="btnB2" class="btn-resposta">B</button>
+    <button onclick="responder('C', 2)" id="btnC2" class="btn-resposta">C</button>
+  </div>
+
+  <br>
+  <button onclick="confirmarResposta()" id="btnConfirmar">✅ Confirmar Resposta</button>
+  <button onclick="desfazerUltimaConfirmacao()" id="btnDesfazer" disabled>↩️ Desfazer Confirmação</button>
+  <button onclick="proximaPergunta()" id="btnProxima" disabled>➡️ Próxima Pergunta</button>
+  
+  <div id="console">
+    <div><strong>Console de Ações:</strong></div>
+  </div>
+
+<script>
+  let perguntas = { facil: [], medio: [], dificil: [], desempate: [] };
+  let usadas = [];
+  let equipes = [];
+  let partidaAtual = 0;
+  let perguntaIndex = 0;
+  let rodada = [];
+  let placar = {1: 0, 2: 0};
+  let empate = false;
+  let ultimaEscolha = null;
+  let ultimaEquipe = null;
+  let ultimoAcertou = false;
+  let tentativas = 0;
+  let historicoPartidas = [];
+  let campeonatoFinalizado = false;
+
+  const botoesResposta = ["btnA1","btnB1","btnC1","btnA2","btnB2","btnC2"];
+
+  document.getElementById("csvPerguntas").addEventListener("change", e => {
+    Papa.parse(e.target.files[0], {
+      header: true,
+      complete: res => {
+        perguntas.facil = res.data.filter(p => p.nivel && p.nivel.toLowerCase() === "fácil");
+        perguntas.medio = res.data.filter(p => p.nivel && p.nivel.toLowerCase() === "médio");
+        perguntas.dificil = res.data.filter(p => p.nivel && p.nivel.toLowerCase() === "difícil");
+        perguntas.desempate = [];
+        logConsole(`Perguntas carregadas: ${perguntas.facil.length} fáceis, ${perguntas.medio.length} médias, ${perguntas.dificil.length} difíceis`);
+      },
+      error: err => {
+        logConsole("Erro ao carregar perguntas: " + err.message);
+      }
+    });
+  });
+
+  document.getElementById("csvEquipes").addEventListener("change", e => {
+    Papa.parse(e.target.files[0], {
+      header: true,
+      complete: res => {
+        equipes = res.data.map(r => r.nome).filter(Boolean);
+        if (equipes.length < 2) {
+          logConsole("Erro: É necessário pelo menos 2 equipes");
+          return;
+        }
+        
+        // Preenche as posições de todas as partidas do campeonato com null
+        const totalPartidas = 15; // 8 primeiras + 4 quartas + 2 semis + 1 final
+        while (equipes.length < totalPartidas * 2) {
+          equipes.push(null);
+        }
+        
+        logConsole(`${equipes.length} posições de equipes carregadas`);
+        
+        let eq1 = equipes[0];
+        let eq2 = equipes[1];
+        localStorage.setItem("jogo_publico", JSON.stringify({
+          tipo: "proxima",
+          equipe1: eq1,
+          equipe2: eq2,
+          partida: 1
+        }));
+        document.getElementById("btnIniciarPartida").style.display = "inline-block";
+      },
+      error: err => {
+        logConsole("Erro ao carregar equipes: " + err.message);
+      }
+    });
+  });
+
+  function iniciarPartidaPublica() {
+    if (campeonatoFinalizado) {
+      logConsole("Campeonato já finalizado");
+      return;
+    }
+    
+    if (partidaAtual >= 15) {
+      logConsole("Todas as partidas já foram realizadas");
+      return;
+    }
+    
+    document.getElementById("btnIniciarPartida").style.display = "none";
+    
+    let eq1 = equipes[partidaAtual * 2];
+    let eq2 = equipes[partidaAtual * 2 + 1];
+    
+    if (!eq1 || !eq2) {
+      logConsole("Erro: Equipes não definidas para esta partida");
+      return;
+    }
+    
+    localStorage.setItem("jogo_publico", JSON.stringify({
+      tipo: "proxima",
+      equipe1: eq1,
+      equipe2: eq2,
+      partida: partidaAtual + 1,
+      equipes: equipes
+    }));
+    
+    iniciarPartida();
+  }
+
+  function iniciarPartida() {
+    if (partidaAtual >= 15 || equipes.length < 2) return;
+    
+    placar = {1: 0, 2: 0};
+    perguntaIndex = 0;
+    rodada = [
+      sortear(perguntas.facil),
+      sortear(perguntas.medio),
+      sortear(perguntas.dificil)
+    ];
+    
+    // Adiciona mais 2 perguntas extras de dificuldade aleatória (total 5 perguntas)
+    for (let i = 0; i < 2; i++) {
+      const todas = [...perguntas.facil, ...perguntas.medio, ...perguntas.dificil].filter(p => !usadas.includes(p.pergunta));
+      if (todas.length > 0) {
+        const p = todas[Math.floor(Math.random() * todas.length)];
+        usadas.push(p.pergunta);
+        rodada.push(p);
+      }
+    }
+    
+    empate = false;
+    tentativas = 0;
+    resetarBotoesResposta();
+    atualizarTela();
+  }
+
+  function salvarJogo() {
+    const estado = { 
+      partidaAtual, 
+      perguntaIndex, 
+      rodada, 
+      placar, 
+      empate, 
+      equipes, 
+      usadas, 
+      historicoPartidas,
+      campeonatoFinalizado
+    };
+    const blob = new Blob([JSON.stringify(estado)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "estado_jogo.json";
+    link.click();
+    logConsole("Jogo salvo com sucesso");
+  }
+
+  function carregarJogo() {
+    const file = document.getElementById("arquivoJogo").files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = JSON.parse(e.target.result);
+        partidaAtual = data.partidaAtual;
+        perguntaIndex = data.perguntaIndex;
+        rodada = data.rodada;
+        placar = data.placar;
+        empate = data.empate;
+        equipes = data.equipes;
+        usadas = data.usadas;
+        historicoPartidas = data.historicoPartidas || [];
+        campeonatoFinalizado = data.campeonatoFinalizado || false;
+        
+        if (campeonatoFinalizado) {
+          document.getElementById("btnFinalizar").style.display = "inline-block";
+        } else if (partidaAtual > 0 && partidaAtual < 15) {
+          if (placar[1] >= 3 || placar[2] >= 3 || perguntaIndex >= 5) {
+            document.getElementById("btnProximaPartida").style.display = "inline-block";
+          } else {
+            document.getElementById("btnIniciarPartida").style.display = "none";
+          }
+        }
+        
+        atualizarTela();
+        logConsole("Jogo carregado com sucesso");
+      } catch (err) {
+        logConsole("Erro ao carregar jogo: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function sortear(lista) {
+    if (!lista || lista.length === 0) {
+      logConsole("Aviso: Nenhuma pergunta disponível para sorteio");
+      return { pergunta: "Pergunta padrão", A: "A", B: "B", C: "C", correta: "A", nivel: "fácil" };
+    }
+    
+    let disponiveis = lista.filter(p => p.pergunta && !usadas.includes(p.pergunta));
+    if (disponiveis.length === 0) {
+      logConsole("Aviso: Todas as perguntas deste nível já foram usadas");
+      disponiveis = lista;
+    }
+    
+    let sorteada = disponiveis[Math.floor(Math.random() * disponiveis.length)];
+    usadas.push(sorteada.pergunta);
+    return sorteada;
+  }
+
+  function resetarBotoesResposta() {
+    botoesResposta.forEach(id => {
+      const btn = document.getElementById(id);
+      btn.className = "btn-resposta";
+      btn.disabled = false;
+    });
+  }
+
+  function atualizarTela() {
+    let eq1 = equipes[partidaAtual * 2];
+    let eq2 = equipes[partidaAtual * 2 + 1];
+    
+    document.getElementById("partida_numero").innerText = partidaAtual + 1;
+    document.getElementById("equipe1_nome").innerText = eq1 || "-";
+    document.getElementById("equipe2_nome").innerText = eq2 || "-";
+    document.getElementById("label_e1").innerText = eq1 || "Equipe 1";
+    document.getElementById("label_e2").innerText = eq2 || "Equipe 2";
+    
+    let pergunta = rodada[perguntaIndex];
+    if (pergunta) {
+      document.getElementById("pergunta_atual").innerText = pergunta.pergunta +
+        " (A: " + pergunta.A + ", B: " + pergunta.B + ", C: " + pergunta.C + ")";
+      logConsole(`Pergunta ${perguntaIndex + 1} enviada (nível: ${pergunta.nivel})`);  
+    } else {
+      document.getElementById("pergunta_atual").innerText = "Pergunta não disponível";
+    }
+    
+    if (tentativas < 2) {
+      ativarBotoes();
+    } else {
+      desativarBotoes();
+    }
+    
+    document.getElementById("btnProxima").disabled = true;
+    document.getElementById("btnConfirmar").disabled = true;
+    document.getElementById("btnDesfazer").disabled = true;
+
+    if (pergunta) {
+      localStorage.setItem("jogo_publico", JSON.stringify({
+        tipo: "nova",
+        pergunta: pergunta.pergunta,
+        rodadaIndex: perguntaIndex,
+        A: pergunta.A,
+        B: pergunta.B,
+        C: pergunta.C,
+        partida: partidaAtual + 1,
+        equipe1: eq1,
+        equipe2: eq2,
+        placar1: placar[1],
+        placar2: placar[2],
+        equipes: equipes
+      }));
+    }
+  }
+
+  function responder(opcao, equipe) {
+    // Remove seleção anterior
+    botoesResposta.forEach(id => {
+      document.getElementById(id).classList.remove("btn-selecionado");
+    });
+    
+    // Marca o botão selecionado
+    const btnId = `btn${opcao}${equipe}`;
+    document.getElementById(btnId).classList.add("btn-selecionado");
+    
+    ultimaEscolha = opcao;
+    ultimaEquipe = equipe;
+    
+    try {
+      document.getElementById("som-selecao").play().catch(() => {});
+    } catch (e) {}
+    
+    localStorage.setItem("jogo_publico", JSON.stringify({ 
+      tipo: "escolha", 
+      opcao, 
+      equipe 
+    }));
+    
+    logConsole(`Equipe ${equipe} escolheu: ${opcao}`);
+    document.getElementById("btnConfirmar").disabled = false;
+  }
+
+  function confirmarResposta() {
+    if (!ultimaEscolha || !ultimaEquipe) return;
+    const p = rodada[perguntaIndex];
+    const correta = p.correta.trim().toUpperCase();
+
+    localStorage.setItem("jogo_publico", JSON.stringify({
+      tipo: "confirmar",
+      opcao: ultimaEscolha,
+      correta,
+      equipe: ultimaEquipe
+    }));
+
+    // Marca os botões com cores de acerto/erro
+    const btnId = `btn${ultimaEscolha}${ultimaEquipe}`;
+    const btn = document.getElementById(btnId);
+    
+    ultimoAcertou = false;
+    if (ultimaEscolha === correta) {
+      placar[ultimaEquipe]++;
+      btn.classList.add("btn-correto");
+      ultimoAcertou = true;
+      
+      try {
+        document.getElementById("som-acerto").play().catch(() => {});
+      } catch (e) {}
+      
+      logConsole(`Resposta confirmada: ${ultimaEscolha} - CORRETA`);
+      logConsole(`Placar atualizado: ${placar[1]} x ${placar[2]}`);
+      desativarBotoes();
+      document.getElementById("btnProxima").disabled = false;
+      document.getElementById("btnDesfazer").disabled = false;
+      
+      // Verifica se alguma equipe atingiu 3 pontos
+      if (placar[1] >= 3 || placar[2] >= 3) {
+        logConsole("Vitória automática! Clique em Próxima Pergunta para encerrar.");
+      }
+      
+      localStorage.setItem("jogo_publico", JSON.stringify({
+        tipo: "placar",
+        placar1: placar[1],
+        placar2: placar[2],
+        equipes: equipes
+      }));
+    } else {
+      btn.classList.add("btn-errado");
+      tentativas++;
+      
+      try {
+        document.getElementById("som-erro").play().catch(() => {});
+      } catch (e) {}
+      
+      logConsole(`Resposta confirmada: ${ultimaEscolha} - ERRADA`);
+      
+      if (tentativas === 1) {
+        const bloqueio = ultimaEquipe === 1 ? ["btnA1","btnB1","btnC1"] : ["btnA2","btnB2","btnC2"];
+        const liberacao = ultimaEquipe === 1 ? ["btnA2","btnB2","btnC2"] : ["btnA1","btnB1","btnC1"];
+        bloqueio.forEach(id => document.getElementById(id).disabled = true);
+        liberacao.forEach(id => document.getElementById(id).disabled = false);
+      } else if (tentativas === 2) {
+        desativarBotoes();
+        document.getElementById("btnProxima").disabled = false;
+        document.getElementById("btnDesfazer").disabled = false;
+      }
+    }
+    
+    document.getElementById("btnConfirmar").disabled = true;
+    document.getElementById("btnDesfazer").disabled = false;
+  }
+
+  function desfazerUltimaConfirmacao() {
+    if (!ultimaEquipe || !ultimaEscolha) return;
+    
+    if (ultimoAcertou) {
+      placar[ultimaEquipe]--;
+      logConsole(`Pontuação removida da equipe ${ultimaEquipe}`);
+    }
+    
+    logConsole(`Desfeita a confirmação da equipe ${ultimaEquipe} (resposta: ${ultimaEscolha})`);
+    ultimaEscolha = null;
+    ultimaEquipe = null;
+    ultimoAcertou = false;
+    tentativas = 0;
+    resetarBotoesResposta();
+    atualizarTela();
+    document.getElementById("btnDesfazer").disabled = true;
+  }
+
+  function proximaPergunta() {
+    perguntaIndex++;
+    tentativas = 0;
+    document.getElementById("btnProxima").disabled = true;
+    resetarBotoesResposta();
+
+    // Verifica condições de término
+    const vitoriaAutomatica = placar[1] >= 3 || placar[2] >= 3;
+    const fimDasPerguntas = perguntaIndex >= 5;
+    const terminouRodada = vitoriaAutomatica || (fimDasPerguntas && placar[1] !== placar[2]);
+    
+    if (terminouRodada) {
+        desativarBotoes();
+        document.getElementById("btnDesfazer").disabled = true;
+        document.getElementById("btnConfirmar").disabled = true;
+        
+        // Finaliza a partida
+        const vencedor = placar[1] > placar[2] ? equipes[partidaAtual * 2] : equipes[partidaAtual * 2 + 1];
+        finalizarPartida(vencedor);
+        return;
+    }
+    
+    // Se empatou após 5 perguntas, inicia desempate
+    if (fimDasPerguntas && placar[1] === placar[2]) {
+        const nova = sortear(perguntas.facil);
+        rodada.push(nova);
+        empate = true;
+        perguntaIndex = rodada.length - 1;
+        logConsole("EMPATE! Iniciando perguntas de desempate...");
+        atualizarTela();
+        return;
+    }
+
+    // Continua para próxima pergunta
+    atualizarTela();
+  }
+  
+  function finalizarPartida(vencedor) {
+    const eq1 = equipes[partidaAtual * 2];
+    const eq2 = equipes[partidaAtual * 2 + 1];
+    
+    historicoPartidas.push({
+        partida: partidaAtual + 1,
+        equipe1: eq1,
+        equipe2: eq2,
+        placar1: placar[1],
+        placar2: placar[2],
+        vencedor: vencedor,
+        perguntas: rodada
+    });
+
+    localStorage.setItem("jogo_publico", JSON.stringify({
+        tipo: "fim_partida",
+        vencedor,
+        placar1: placar[1],
+        placar2: placar[2],
+        equipe1: eq1,
+        equipe2: eq2,
+        equipes: equipes,
+        partida: partidaAtual + 1
+    }));
+
+    // Avança o vencedor para a próxima fase
+    const idxProx = Math.floor(partidaAtual / 2) + 8;
+    const pos = partidaAtual % 2;
+    
+    if (idxProx < 15) {
+        if (!equipes[idxProx * 2 + pos]) {
+            equipes[idxProx * 2 + pos] = vencedor;
+            logConsole(`Equipe ${vencedor} avançou para a próxima fase (posição ${idxProx * 2 + pos})`);
+        }
+    }
+
+    partidaAtual++;
+    
+    if (partidaAtual === 15) {
+        document.getElementById("btnFinalizar").style.display = "inline-block";
+        campeonatoFinalizado = true;
+        logConsole("CAMPEONATO FINALIZADO! Clique em Finalizar Campeonato para ver o resultado.");
+    } else {
+        document.getElementById("btnProximaPartida").style.display = "inline-block";
+    }
+  }
+
+  function proximaPartida() {
+    document.getElementById("btnProximaPartida").style.display = "none";
+    
+    desativarBotoes();
+    document.getElementById("btnDesfazer").disabled = true;
+    document.getElementById("btnConfirmar").disabled = true;
+    
+    if (partidaAtual < 15) {
+      document.getElementById("btnIniciarPartida").style.display = "inline-block";
+    }
+    
+    let eq1 = equipes[partidaAtual * 2];
+    let eq2 = equipes[partidaAtual * 2 + 1];
+    
+    localStorage.setItem("jogo_publico", JSON.stringify({
+      tipo: "proxima",
+      equipe1: eq1,
+      equipe2: eq2,
+      partida: partidaAtual + 1
+    }));
+  }
+
+  function finalizarCampeonato() {
+    if (!campeonatoFinalizado) return;
+    
+    const campeao = equipes[28];
+    const vice = equipes[29];
+    
+    logConsole(`🏆 CAMPEÃO: ${campeao}`);
+    logConsole(`🥈 VICE-CAMPEÃO: ${vice}`);
+    
+    localStorage.setItem("jogo_publico", JSON.stringify({
+      tipo: "fim_campeonato",
+      campeao,
+      vice,
+      historico: historicoPartidas
+    }));
+    
+    document.getElementById("btnFinalizar").disabled = true;
+  }
+
+  function desativarBotoes() {
+    botoesResposta.forEach(id => {
+      document.getElementById(id).disabled = true;
+      document.getElementById(id).classList.add("btn-desativado");
+    });
+    document.getElementById("btnConfirmar").disabled = true;
+    document.getElementById("btnDesfazer").disabled = true;
+  }
+
+  function ativarBotoes() {
+    botoesResposta.forEach(id => {
+      document.getElementById(id).disabled = false;
+      document.getElementById(id).classList.remove("btn-desativado");
+    });
+    document.getElementById("btnConfirmar").disabled = false;
+    document.getElementById("btnProxima").disabled = true;
+  }
+  
+  function logConsole(mensagem) {
+    const c = document.getElementById("console");
+    const linha = document.createElement("div");
+    linha.textContent = `[${new Date().toLocaleTimeString()}] ${mensagem}`;
+    c.appendChild(linha);
+    c.scrollTop = c.scrollHeight;
+  }
+</script>
+
+<!-- Sons (opcionais) -->
+<audio id="som-selecao" preload="auto">
+  <source src="sons/selecao.wav" type="audio/wav">
+</audio>
+<audio id="som-acerto" preload="auto">
+  <source src="sons/acerto.wav" type="audio/wav">
+</audio>
+<audio id="som-erro" preload="auto">
+  <source src="sons/erro.wav" type="audio/wav">
+</audio>
+
+</body>
+</html>
